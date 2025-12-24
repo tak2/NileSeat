@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DeskStatus {
+  Available
+  Unavailable
+}
+
+enum BookingStatus {
+  Booked
+  CheckedIn
+  CheckedOut
+  Cancelled
+  NoShow
+}
+
+model Tenant {
+  tenantId    String   @id
+  domain      String   @unique
+  displayName String
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Admin {
+  email       String   @id
+  displayName String?
+  addedBy     String?
+  addedAt     DateTime @default(now())
+}
+
+model Desk {
+  deskCode     String      @id
+  status       DeskStatus  @default(Available)
+  mapX         Float
+  mapY         Float
+  qrCodeValue  String
+  floorPlanId  String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  bookings     Booking[]
+}
+
+model Booking {
+  id            String         @id @default(cuid())
+  deskCode      String
+  desk          Desk           @relation(fields: [deskCode], references: [deskCode])
+  bookedByEmail String
+  bookedByName  String
+  bookingDate   DateTime       @db.Date
+  status        BookingStatus  @default(Booked)
+  checkInTime   DateTime?
+  checkOutTime  DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([deskCode, bookingDate])
+  @@unique([bookedByEmail, bookingDate])
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  actorEmail  String
+  action      String
+  entity      String
+  entityId    String
+  payload     Json?
+  timestamp   DateTime  @default(now())
+}
