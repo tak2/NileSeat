@@ -62,6 +62,62 @@ This repository contains a minimal blueprint for the Option A stack: Next.js + N
 5. Start stack: `docker compose up --build`.
 6. Browse: `https://your-domain.com` (Nginx proxies to `web:3000`).
 
+## Deploying to a VPS (Docker Compose)
+You can run the entire stack on a single VPS (Ubuntu/Debian or similar) with Docker and Docker Compose. Point your domain’s DNS (A/AAAA) to the VPS IP before starting so `NEXTAUTH_URL` and TLS termination work.
+
+### Required environment variables
+- `NEXTAUTH_URL` – public URL of the app (e.g., `https://desks.example.com`).
+- `NEXTAUTH_SECRET` – 32+ char random string; generate with `openssl rand -base64 32`.
+- `AZURE_AD_CLIENT_ID` / `AZURE_AD_CLIENT_SECRET` / `AZURE_AD_TENANT_ID` – Azure AD app credentials locked to your tenant.
+- `DATABASE_URL` – Postgres connection string. The default (`postgresql://nileseat:nileseat@db:5432/nileseat`) points at the bundled container.
+- `REDIS_URL` – Redis connection string (`redis://redis:6379` for the bundled container).
+- `NODE_ENV` – `production`.
+- `NILESEAT_ADMIN_EMAIL` – email to seed as the first admin (must belong to your tenant).
+
+### One-time setup script (run on the VPS)
+```bash
+# install docker + compose plugin (Ubuntu/Debian)
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker "$USER"
+newgrp docker
+
+# pull code and create env file
+git clone https://github.com/your-org/NileSeat.git
+cd NileSeat
+cp .env.example .env
+```
+
+Edit `.env` with the values above (including `NILESEAT_ADMIN_EMAIL`). Generate `NEXTAUTH_SECRET` if needed:
+```bash
+openssl rand -base64 32
+```
+
+### Deploy/start the stack
+```bash
+# build and start (detached)
+docker compose --env-file .env up -d --build
+
+# run migrations against the running Postgres
+docker compose exec web npx prisma migrate deploy
+
+# seed initial admin (uses NILESEAT_ADMIN_EMAIL from .env)
+docker compose exec -e NILESEAT_ADMIN_EMAIL web npx ts-node prisma/seed.ts
+```
+
+### Update/redeploy script
+```bash
+cd /path/to/NileSeat
+git pull
+docker compose --env-file .env pull          # optional: refresh base images
+docker compose --env-file .env up -d --build # rebuild app
+docker compose exec web npx prisma migrate deploy
+```
+
+### Operational tips on a VPS
+- Place TLS certificates where Nginx can read them and wire them into `deploy/nginx.conf` (or use `certbot` + a companion container).
+- Backup volumes: Postgres (`db` service) and Redis (`redis` service) are volume-backed; snapshot those regularly.
+- Monitor: tail app logs with `docker compose logs -f web nginx`; add metrics/alerting as needed.
+
 ## Operational notes
 - Enforce HTTPS in Nginx; include HSTS and CSP headers for production.
 - Rate limit auth and booking mutations via Nginx and Redis.
